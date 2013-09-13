@@ -42,17 +42,18 @@ module MpstatAgent
     agent_guid   "com.railsware.mpstat"
     agent_config_options :command, :interval
     agent_version '0.0.2'
-    agent_human_labels("Mpstat") { `hostname -f` }
+    agent_human_labels("Mpstat") { `hostname` }
 
 
     def poll_cycle
       # Using the second reading- avg since previous check
       output = stat_output
       values,result = parse_values(output), {}
-      [:usr, :user, :nice, :sys, :iowait, :irq, :soft, :steal, :idle].each do |k|
-        report_metric("mpstat/#{k}", "%", values[k]) if values[k]
-      end
-      report_metric("mpstat/intrps", "instr/sec", values[:intrps]) if values[:intrps]
+      report_metric("mpstat/user", "%", values[:usr])
+      report_metric("mpstat/sys", "%", values[:sys])
+      report_metric("mpstat/wait", "%", values[:wt])
+      report_metric("mpstat/idle", "%", values[:idl])
+      report_metric("mpstat/intrps", "instr/sec", values[:intr])
     rescue Exception => e
       raise "Couldn't parse output. Make sure you have mpstat installed. #{e}"
     end
@@ -69,14 +70,14 @@ module MpstatAgent
 
     def parse_values(output)
       # Expected output format:
-      # 04:38:34 PM  CPU   %user   %nice    %sys %iowait    %irq   %soft  %steal   %idle    intr/s
-      # 04:38:34 PM  all    6.69    0.02    1.30    0.31    0.02    0.13    0.00   91.53    349.37
+      # SET minf mjf xcal  intr ithr  csw icsw migr smtx  srw syscl  usr sys  wt idl sze
+      #  0 2650   0 6632 24717 5965 26033  441 1281 11458    2 41122    4  10   0  86  24
 
       # take the format fields
-      format=output.split("\n").grep(/CPU/).last.gsub(/\//,'p').gsub(/(%|:|PM|AM)/,'').downcase.split
+      format=output.split("\n").first.downcase.split
 
       # take all the stat fields
-      raw_stats=output.split("\n").grep(/[0-9]+\.[0-9]+$/).last.split
+      raw_stats=output.split("\n").last.split
 
       stats={}
       format.each_with_index { |field,i| stats[ format[i].to_sym ]=raw_stats[i] }
